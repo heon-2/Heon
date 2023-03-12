@@ -1,0 +1,19 @@
+body {
+    height: 3000px;
+    margin: 0;
+    font-family: 'Noto Sans KR', sans-serif;
+}
+
+nav {
+    height: 80px;
+}
+
+nav img {
+    height: 80px;
+}
+
+header {
+    height: 700px;
+    background-image: url('images/header.jpg');
+    background-size: cover;
+}
