@@ -23,5 +23,5 @@ for tc in range(1,T+1) :
                 clap += i-1-clap
                 clap += int(arr[i-1])
 # 고용한 사람 수 출력
-    print(f'#{tc} {hire}')
+    print(f'#{tc} {hire}')dddd
 
