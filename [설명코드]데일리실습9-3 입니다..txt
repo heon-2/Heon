@@ -1,0 +1,258 @@
+아이디 admin 비번 1
+
+셋팅
+-------------------------------------------------------------------------------------
+가상환경을 생성하고 활성화
+$ source venv/Scripts/activate
+
+가상환경에 requirements.txt의 라이브러리 설치
+$ pip install -r requirements
+
+accounts app을 생성합니다.
+python manage.py startapp accounts
+
+setting.py에서 app을 등록
+
+INSTALLED_APPS = [
+    'accounts',
+]
+
+urls.py에서 url path를 작성
+
+urlpatterns = [
+    path('accounts/', include('accounts.urls')),
+]
+
+accounts/urls.py
+from django.urls import path
+from . import views
+
+app_name = 'accounts'
+urlpatterns = [
+    path('login/', views.login, name='login'),
+    path('logout/', views.logout, name='logout'),
+]
+
+-------------------------------------------------------------------------------------
+
+views.py에서 조건에 맞는 함수를 작성
+1. accounts앱의 views.py에 로그인 및 로그아웃 구현
+
+accounts/views.py
+from django.shortcuts import render, redirect
+from django.contrib.auth import login as auth_login
+from django.contrib.auth import logout as auth_logout
+from django.contrib.auth.forms import AuthenticationForm
+from django.views.decorators.http import require_POST, require_http_methods
+
+@require_http_methods(['GET', 'POST'])
+def login(request):
+		# 이미 인증된(로그인한) 유저가 해당 함수를 호출한 경우
+    if request.user.is_authenticated:
+        return redirect('movies:index')
+		# POST 요청인 경우
+    if request.method == 'POST':
+        form = AuthenticationForm(request, request.POST)
+		# 유효성 검사
+        if form.is_valid():
+		# 로그인
+            auth_login(request, form.get_user())
+		# next 파라미터의 값이 있으면 해당 위치로, 없으면 목록 페이지로 redirect
+            return redirect(request.GET.get('next') or 'movies:index')
+		# GET 요청인 경우
+    else:
+        form = AuthenticationForm()
+    context = {
+        'form': form
+    }
+    return render(request, 'accounts/login.html', context)
+
+
+@require_POST
+def logout(request):
+		# 로그아웃을 위해서는 요청하는 유저가 인증된(로그인한) 유저여야 함
+    if request.user.is_authenticated:
+        auth_logout(request)
+        return redirect('movies:index')
+
+
+
+설명
+1. POST요청인 경우 request.POST로 넘어온 데이터를 담은 form 인스턴스를 생성
+2. form의 유효성 검사를 토과한 후 로그인 처리
+3. next 파라미터의 값이 있으면 해당 위치로, 없으면 목록 페이지로 redirect 
+4. GET 요청인 경우 로그인에 필요한 데이터를 입력받을 수 있는 비어있는 form 인스턴스를 생성
+5. 로그아웃을 위해서는 요청하는 유저가 인증된(로그인한) 유저여야 됨
+
+-------------------------------------------------------------------------------------
+
+2. movies앱의 views.py에서는 게시글 조회를 제외한 모든 기능들을 인증된 상태에서만 가능하도록 수정
+
+movies/views.py
+
+from django.contrib.auth.decorators import login_required
+
+# login_required 데코레이터를 통해 인증여부 확인 후 함수 실행
+
+@login_required
+@require_http_methods(["GET","POST"])
+def create(request):
+    if request.method == 'POST':
+        form = MovieForm(request.POST)
+        if form.is_valid:
+            movie = form.save()
+            return redirect('movies:detail',movie.pk)
+    else:
+        form = MovieForm()
+    context={
+        'form':form
+    }
+    return render(request,'movies/create.html',context)
+
+
+@require_POST
+def delete(request, pk):
+		# login_required 데코레이터와 require_POST 데코레이터를 같이 사용하면 405 error 발생
+		# 아래와 같은 if 처리를 통해 처리 가능
+    if request.user.is_authenticated:
+        movie = get_object_or_404(Movie,pk=pk)
+        movie.delete()
+    return redirect("movies:index")
+
+
+
+# login_required 데코레이터를 통해 인증여부 확인 후 함수 실행
+@login_required
+@require_http_methods(["GET","POST"])
+def update(request,pk):
+    movie = get_object_or_404(Movie,pk=pk)
+    if request.method == "POST":
+        form = MovieForm(request.POST, instance = movie)
+        if form.is_valid:
+            form.save()
+            return redirect("movies:detail",movie.pk)
+    else:
+        form = MovieForm(instance=movie)
+    context = {
+        'movie':movie,
+        'form':form,
+    }
+    return render(request,"movies/update.html",context)
+
+설명: 
+1. login_required 데코레이터를 통해 인증여부를 확인 후 함수를 실행
+
+2. delete 함수에서 login_required 데코레이터와 requuire_POST 데코레이터를 같이 사용하면
+   405 error가 발생 가능하도록 함 (405 error -> HTTP 메서드 매칭이 되지 않아 생기는 오류)
+
+3. login_required 데코레이터를 사용한 경우, 로그인 후 next 인자가 가리키는 곳으로 이동 가능하도록
+   accounts/views.py 에 있는 로그인 함수를 수정함
+
+3. login_required 데코레이터를 사용한 경우, 로그인 후 next 인자가 가리키는 곳으로 이동 가능하도록
+   accounts앱의 views.py에 있는 로그인 함수를 수정함
+
+
+-------------------------------------------------------------------------------------
+
+accounts/views.py
+
+@require_http_methods(["GET", "POST"])
+def login(request):
+    if request.method == "POST":
+        form = AuthenticationForm(request, request.POST)
+        if form.is_valid():
+            auth_login(request, form.get_user())
+		# login_required 데코레이터를 사용한 경우, 로그인 후 next 인자가 가리키는 곳으로 이동 가능하도록 수정
+            return redirect(request.GET.get("next") or "movies:index")
+    else:
+        form = AuthenticationForm()
+    context = {"form": form}
+    return render(request, "accounts/login.html", context)
+
+-------------------------------------------------------------------------------------
+
+각각의 html을 작성 및 수정
+
+1. login을 위한 login.html을 작성
+
+{% extends 'base.html' %}
+
+{% block content %}
+  <h1>로그인</h1>
+  <form action="{% url 'accounts:login' %}" method="POST">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="submit">
+  </form>
+{% endblock content %}
+
+-------------------------------------------------------------------------------------
+
+2. base.html에 로그인, 로그아웃 버튼을 추가하고 인증상태에 따라 기능 출력
+
+base.html
+
+<div class="container">
+	<!-- 유저가 인증된 경우 -->
+  {% if request.user.is_authenticated %}
+    <h3>Hello, {{ user }} </h3>
+    <form action="{% url 'accounts:logout' %}" method="POST">
+      {% csrf_token %}
+      <input type="submit", value = "Logout">
+    </form>
+	<!-- 유저가 인증되지 않은 경우 -->
+  {% else %}
+    <a href="{% url 'accounts:login' %}">Login</a>
+  {% endif %}
+  {% block content %}
+  {% endblock content %}
+</div>
+
+-------------------------------------------------------------------------------------
+
+숨바꼭질 하는 느낌이네요ㅎㅎ
+[장고 구현시 항상 주의할 점] 힌트 팁
+버그수정시 들여쓰기 잘못된것 있나 잘보기
+회원탈퇴 구현연습 해보기
+회원정보 수정연습 해보기
+로그인 상태에 따른 baseindex 다르게 작성해보기
+UserChangeForm이랑 커스텀유저체인지폼이랑 잘 구분하기
+
+-------------------------------------------------------------------------------------
+
+3. index.html에서 인증된 사용자에게는 게시글 작성 링크를 노출하고 
+                      인증되지 않은 사용자에게는 로그인 링크를 노출
+
+index.html
+{% extends 'base.html' %}
+
+{% block content %}
+  <h1>Movies</h1>
+	<!-- 유저가 인증된 경우, 게시글 작성 링크 노출 -->
+  {% if request.user.is_authenticated %}
+    <a href="{% url 'movies:create' %}">[CREATE]</a>
+	<!-- 유저가 인증되지 않은 경우, 로그인 링크 노출 -->
+  {% else %}
+    <a href="{% url 'accounts:login' %}">[새 글을 작성하려면 로그인하세요.]</a>
+  {% endif %}
+  <hr>
+  {% for movie in movies %}
+    <p>제목 : {{ movie.title }}</p>
+    <p>감독 : {{ movie.director }}</p>
+    <a href="{% url 'movies:detail' movie.pk %}">[detail]</a>
+    <hr>
+  {% endfor %}
+{% endblock %}
+
+테스트 해보세요
+
+migration 진행
+
+$ python manage.py makemigrations
+$ python manage.py migrate
+
+관리자 계정을 생성하고 로그인 및 인증상태 기능확인
+$ python manage.py createsuperuser
+
+
+-------------------------------------------------------------------------------------
